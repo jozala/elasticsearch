@@ -41,6 +41,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -195,8 +197,13 @@ public class Docker {
             try {
                 // Give the container enough time for security auto-configuration or a chance to crash out
                 Thread.sleep(STARTUP_SLEEP_INTERVAL_MILLISECONDS);
-                psOutput = dockerShell.run("bash -c '" + FIND_ELASTICSEARCH_PROCESS + " | wc -l'").stdout();
-                if (psOutput.contains("1")) {
+
+                // Sometimes it ends up emitting transient warnings/errors alongside the numeric output.
+                // We only care about the final numeric line.
+                psOutput = dockerShell.run("bash -c '" + FIND_ELASTICSEARCH_PROCESS + " | wc -l | tail -n 1'").stdout();
+
+                int processCount = parseTrailingInt(psOutput);
+                if (processCount >= 1) {
                     isElasticsearchRunning = true;
                     break;
                 }
@@ -223,6 +230,19 @@ public class Docker {
                 %s\
                 """, psOutput, dockerLogs.stdout(), dockerLogs.stderr(), getThreadDump()));
         }
+    }
+
+    private static int parseTrailingInt(String output) {
+        if (output == null) {
+            return -1;
+        }
+
+        // Match the last run of digits at end-of-string (after trimming whitespace).
+        Matcher matcher = Pattern.compile("(\\d+)\\s*$").matcher(output);
+        if (matcher.find() == false) {
+            return -1;
+        }
+        return Integer.parseInt(matcher.group(1));
     }
 
     /**
