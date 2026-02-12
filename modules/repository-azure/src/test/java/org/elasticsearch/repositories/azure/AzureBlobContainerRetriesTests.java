@@ -645,11 +645,13 @@ public class AzureBlobContainerRetriesTests extends AbstractBlobContainerRetries
                     );
                 }
             } finally {
-                exchange.close();
                 if (closeAfterHandling) {
-                    // Close the client provider after we've sent the response
+                    // Close the client provider before closing the exchange. The exchange.close() flushes the
+                    // incomplete response to the client, which triggers a retry. By closing the client provider
+                    // first, we guarantee the closed flag is visible to the client's retry attempt.
                     clientProvider.close();
                 }
+                exchange.close();
             }
         });
 

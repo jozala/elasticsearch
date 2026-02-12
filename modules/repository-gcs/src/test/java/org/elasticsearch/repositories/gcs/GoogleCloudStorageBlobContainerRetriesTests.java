@@ -700,9 +700,11 @@ public class GoogleCloudStorageBlobContainerRetriesTests extends AbstractBlobCon
                     );
                 }
             } finally {
-                exchange.close();
-                // Close the blob store once we've sent the first chunk
+                // Close the blob store before closing the exchange. The exchange.close() flushes the
+                // incomplete response to the client, which triggers a retry. By closing the blob store first,
+                // we guarantee the closed flag is visible to the client's retry attempt.
                 blobContainer.getBlobStore().close();
+                exchange.close();
             }
         });
 
