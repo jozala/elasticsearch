@@ -405,14 +405,28 @@ allprojects {
         splitForCI(project, "Part6")
       } else if (project.path.contains(":eql") || project.path.contains(":sql")) {
         splitForCI(project, "Part5")
+      } else if (project.path.contains(":esql-datasource") || project.path.contains(":esql-core")) {
+        splitForCI(project, "Part5")
+      } else if (project.path.contains(":esql:compute") || project.path.contains(":esql:arrow")) {
+        splitForCI(project, "Part6")
+      } else if (project.path.contains(":kql")) {
+        splitForCI(project, "Part6")
       } else if (project.path.contains("ql")) {
         splitForCI(project, "Part3")
       } else if (project.path.contains("multi-node")) {
         splitForCI(project, "Part5")
+      } else if (project.path.contains(":inference")) {
+        splitForCI(project, "Part5")
+      } else if (project.path.contains(":ccr") || project.path.contains(":logsdb")) {
+        splitForCI(project, "Part6")
       } else {
         splitForCI(project, "Part2")
       }
     } else if(project.path.startsWith(":qa:")) {
+      splitForCI(project, "Part6")
+    } else if(project.path.startsWith(":test:")) {
+      splitForCI(project, "Part5")
+    } else if(project.path.contains(":data-streams")) {
       splitForCI(project, "Part6")
     } else {
       splitForCI(project, "Part1")
