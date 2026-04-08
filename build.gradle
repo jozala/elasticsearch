@@ -415,6 +415,10 @@ allprojects {
       }
     } else if (project.path.startsWith(":qa:") || project.path.startsWith(":test:")) {
       splitForCI(project, "Part6")
+    } else if (project.path.startsWith(":libs:")) {
+      splitForCI(project, "Part3")
+    } else if (project.path.startsWith(":rest-api-spec:")) {
+      splitForCI(project, "Part6")
     } else {
       splitForCI(project, "Part1")
     }
