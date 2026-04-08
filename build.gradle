@@ -402,14 +402,12 @@ allprojects {
       } else if (project.path.contains(":esql-datasource") || project.path.contains(":esql-core")) {
         splitForCI(project, "Part5")
       } else if (project.path.contains(":esql:qa")) {
-        splitForCI(project, "Part1")
+        splitForCI(project, "Part3")
       } else if (project.path.contains(":eql") || project.path.contains(":sql") || project.path.contains(":transform") ||
           project.path.contains("multi-node") || project.path.contains(":inference")) {
         splitForCI(project, "Part5")
       } else if (project.path.contains("ql")) {
         splitForCI(project, "Part3")
-      } else if (project.path.startsWith(":x-pack:qa:")) {
-        splitForCI(project, "Part6")
       } else {
         splitForCI(project, "Part2")
       }
@@ -417,8 +415,6 @@ allprojects {
       splitForCI(project, "Part6")
     } else if (project.path.startsWith(":libs:")) {
       splitForCI(project, "Part3")
-    } else if (project.path.startsWith(":rest-api-spec:")) {
-      splitForCI(project, "Part6")
     } else {
       splitForCI(project, "Part1")
     }
