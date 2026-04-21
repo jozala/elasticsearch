@@ -10,6 +10,8 @@ import {
   toFqcn,
   ClassifiedTest,
   BATCH_CAPS,
+  parseMutedEntries,
+  MutedEntry,
 } from "./repeat-changed-tests";
 
 describe("toGradleProject", () => {
@@ -512,5 +514,89 @@ describe("generatePipeline", () => {
     expect(pipeline.steps).toHaveLength(1);
     expect(pipeline.steps[0].group).toBe("repeat-changed-tests");
     expect(pipeline.steps[0].steps).toEqual([]);
+  });
+});
+
+describe("parseMutedEntries", () => {
+  test("returns empty array for empty input", () => {
+    expect(parseMutedEntries("")).toEqual([]);
+  });
+
+  test("returns empty array when tests key missing", () => {
+    expect(parseMutedEntries("foo: bar\n")).toEqual([]);
+  });
+
+  test("parses entry with single method", () => {
+    const yaml = `tests:
+- class: org.elasticsearch.Foo
+  method: testBar
+  issue: https://example.com/1
+`;
+    expect(parseMutedEntries(yaml)).toEqual([
+      { className: "org.elasticsearch.Foo", method: "testBar" },
+    ]);
+  });
+
+  test("parses entry with methods list", () => {
+    const yaml = `tests:
+- class: org.elasticsearch.Foo
+  methods:
+    - testA
+    - testB
+  issue: https://example.com/2
+`;
+    expect(parseMutedEntries(yaml)).toEqual([
+      { className: "org.elasticsearch.Foo", method: "testA" },
+      { className: "org.elasticsearch.Foo", method: "testB" },
+    ]);
+  });
+
+  test("parses whole-class mute when no method is given", () => {
+    const yaml = `tests:
+- class: org.elasticsearch.Foo
+  issue: https://example.com/3
+`;
+    expect(parseMutedEntries(yaml)).toEqual([
+      { className: "org.elasticsearch.Foo" },
+    ]);
+  });
+
+  test("parses entry with both method and methods", () => {
+    const yaml = `tests:
+- class: org.elasticsearch.Foo
+  method: testX
+  methods:
+    - testA
+    - testB
+`;
+    expect(parseMutedEntries(yaml)).toEqual([
+      { className: "org.elasticsearch.Foo", method: "testA" },
+      { className: "org.elasticsearch.Foo", method: "testB" },
+      { className: "org.elasticsearch.Foo", method: "testX" },
+    ]);
+  });
+
+  test("preserves yaml parameterized method strings verbatim", () => {
+    const yaml = `tests:
+- class: org.elasticsearch.xpack.apmdata.APMYamlTestSuiteIT
+  method: "test {yaml=/10_apm/Test template reinstallation}"
+`;
+    expect(parseMutedEntries(yaml)).toEqual([
+      {
+        className: "org.elasticsearch.xpack.apmdata.APMYamlTestSuiteIT",
+        method: "test {yaml=/10_apm/Test template reinstallation}",
+      },
+    ]);
+  });
+
+  test("skips entries without a class field", () => {
+    const yaml = `tests:
+- method: testOrphan
+- class: org.elasticsearch.Foo
+  method: testBar
+`;
+    expect(parseMutedEntries(yaml)).toEqual([
+      { className: "org.elasticsearch.Foo", method: "testBar" },
+    ]);
   });
 });
