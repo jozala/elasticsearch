@@ -63,7 +63,6 @@ interface PipelineStep {
 
 interface PipelineGroup {
   group: string;
-  notify: { github_commit_status: { context: string } }[];
   steps: PipelineStep[];
 }
 
@@ -424,7 +423,6 @@ export function generatePipeline(tests: ClassifiedTest[]): Pipeline {
     steps: [
       {
         group: "repeat-changed-tests",
-        notify: [{ github_commit_status: { context: "repeat-changed-tests" } }],
         steps: allSteps,
       },
     ],
