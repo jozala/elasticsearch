@@ -1,21 +1,111 @@
-# Manually-triggered flakiness check.
+# TEMPORARY DIAGNOSTIC — branch wrapper-hang-diagnostic only.
 #
-# Required build env vars:
-#   FLAKINESS_CLASSES — newline- or comma-separated list of fully-qualified Java
-#                       class names (optionally Class.method or Class."test {yaml=...}")
-#                       to run with flakiness detection.
+# Overwrites the regular "flakiness detection (manual)" pipeline so we can
+# trigger a 4-variant matrix from the existing BK catalog entry without
+# registering a new pipeline.
 #
-# Optional build env vars:
-#   FLAKINESS_ITERS   — positive integer overriding the iteration count for
-#                       unit tests (-Dtests.iters), internalClusterTest
-#                       (-Dtests.iters), and REST batches (repeat-rest-test.sh
-#                       loop). Applied uniformly across all kinds.
+# Goal: isolate WHICH part of the wrapNeverFail wrapper makes gradle's CLI JVM
+# stay alive ~36 minutes after BUILD SUCCESSFUL in builds 150149 / 150259 /
+# 150411 / 150439 / 150444 / 150445 / 150515 / ... (every recent wrapper-built
+# step has hit the 58-minute inner-timeout wall).
 #
-# See .buildkite/scripts/flakiness-detection/entrypoints/manual.ts for behavior.
+# Each step runs the *same* tiny gradle invocation (one fast test class) but
+# changes ONE variable in the wrapper chain. Every step echoes timestamps
+# around the gradle call so we can see WHEN gradle returns (or doesn't).
+#
+# Compare results:
+#   - duration                                (BK timing)
+#   - "[X] gradle returned NN at ..."         (timestamp inside the inner bash)
+#   - "[X] timeout returned rc=NN at ..."     (timestamp in the outer bash)
+#   - exit state + soft_fail_state            (BK)
+#
+# Interpretation:
+#   A hangs, B clean         → timeout's new process group is the cause.
+#   A hangs, C clean         → gradle daemon mode is the cause.
+#   A hangs, D clean (B/C h) → the extra `bash $$WRAPPED_CMD_FILE` indirection
+#                              is the cause.
+#   All four hang            → the wrapper isn't the cause after all.
+
+agents:
+  provider: gcp
+  image: family/elasticsearch-ubuntu-2404
+  diskType: hyperdisk-balanced
+  machineType: n4-custom-32-98304
+  buildDirectory: /dev/shm/bk
+
 steps:
-  - label: "detect tests from FLAKINESS_CLASSES"
-    command: |
-      npm install -g bun@1.3.13
-      bun .buildkite/scripts/flakiness-detection/entrypoints/manual.ts
-    timeout_in_minutes: 10
-    soft_fail: false
+  - group: "wrapper hang diagnostic"
+    steps:
+      - label: "A: current wrapper (control)"
+        key: a-current
+        timeout_in_minutes: 5
+        command: |
+          set +e
+          echo "[A] outer-start  $(date -u +%FT%T.%N)"
+          WRAPPED_CMD_FILE=$(mktemp)
+          cat > "$$WRAPPED_CMD_FILE" <<'__GRADLE_EOF__'
+          echo "[A] inner-start  $(date -u +%FT%T.%N)"
+          .ci/scripts/run-gradle.sh :server:test --tests org.elasticsearch.VersionTests
+          inner_rc=$?
+          echo "[A] gradle-ret   $$inner_rc at $(date -u +%FT%T.%N)"
+          exit $$inner_rc
+          __GRADLE_EOF__
+          echo "[A] pre-timeout  $(date -u +%FT%T.%N)"
+          timeout --signal=TERM --kill-after=30s 3m bash "$$WRAPPED_CMD_FILE"
+          rc=$?
+          echo "[A] post-timeout rc=$$rc at $(date -u +%FT%T.%N)"
+          rm -f "$$WRAPPED_CMD_FILE"
+          exit 0
+
+      - label: "B: wrapper + timeout --foreground"
+        key: b-foreground
+        timeout_in_minutes: 5
+        command: |
+          set +e
+          echo "[B] outer-start  $(date -u +%FT%T.%N)"
+          WRAPPED_CMD_FILE=$(mktemp)
+          cat > "$$WRAPPED_CMD_FILE" <<'__GRADLE_EOF__'
+          echo "[B] inner-start  $(date -u +%FT%T.%N)"
+          .ci/scripts/run-gradle.sh :server:test --tests org.elasticsearch.VersionTests
+          inner_rc=$?
+          echo "[B] gradle-ret   $$inner_rc at $(date -u +%FT%T.%N)"
+          exit $$inner_rc
+          __GRADLE_EOF__
+          echo "[B] pre-timeout  $(date -u +%FT%T.%N)"
+          timeout --foreground --signal=TERM --kill-after=30s 3m bash "$$WRAPPED_CMD_FILE"
+          rc=$?
+          echo "[B] post-timeout rc=$$rc at $(date -u +%FT%T.%N)"
+          rm -f "$$WRAPPED_CMD_FILE"
+          exit 0
+
+      - label: "C: wrapper + gradle --no-daemon"
+        key: c-no-daemon
+        timeout_in_minutes: 5
+        command: |
+          set +e
+          echo "[C] outer-start  $(date -u +%FT%T.%N)"
+          WRAPPED_CMD_FILE=$(mktemp)
+          cat > "$$WRAPPED_CMD_FILE" <<'__GRADLE_EOF__'
+          echo "[C] inner-start  $(date -u +%FT%T.%N)"
+          .ci/scripts/run-gradle.sh --no-daemon :server:test --tests org.elasticsearch.VersionTests
+          inner_rc=$?
+          echo "[C] gradle-ret   $$inner_rc at $(date -u +%FT%T.%N)"
+          exit $$inner_rc
+          __GRADLE_EOF__
+          echo "[C] pre-timeout  $(date -u +%FT%T.%N)"
+          timeout --signal=TERM --kill-after=30s 3m bash "$$WRAPPED_CMD_FILE"
+          rc=$?
+          echo "[C] post-timeout rc=$$rc at $(date -u +%FT%T.%N)"
+          rm -f "$$WRAPPED_CMD_FILE"
+          exit 0
+
+      - label: "D: bare gradle, no wrapper (control)"
+        key: d-bare
+        timeout_in_minutes: 5
+        command: |
+          set +e
+          echo "[D] start        $(date -u +%FT%T.%N)"
+          .ci/scripts/run-gradle.sh :server:test --tests org.elasticsearch.VersionTests
+          rc=$?
+          echo "[D] gradle-ret rc=$$rc at $(date -u +%FT%T.%N)"
+          exit 0
